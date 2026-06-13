@@ -1,0 +1,535 @@
+// Noida Villa — Production schema
+// Multi-property capable, multi-owner, audit-logged, financially accurate.
+//
+// Currency: stored in MINOR units (paise for INR). Never use floats for money.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// IDENTITY
+// ============================================================
+
+enum Role {
+  PROPERTY_ADMIN
+  OWNER
+}
+
+model User {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  emailVerified   DateTime?
+  name            String?
+  image           String?
+  passwordHash    String?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  memberships     PropertyMembership[]
+  auditLogs       AuditLog[]
+  createdTxns     Transaction[]    @relation("TxnCreator")
+
+  @@index([email])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================================
+// PROPERTY & MEMBERSHIP
+// ============================================================
+
+model Property {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  status          PropertyStatus @default(PREPARING)
+  city            String
+  state           String
+  country         String
+  addressLine     String?
+  postalCode      String?
+  latitude        Decimal?  @db.Decimal(9, 6)
+  longitude       Decimal?  @db.Decimal(9, 6)
+  timezone        String   @default("Asia/Kolkata")
+  currency        String   @default("INR")
+
+  // Snapshot content (overridable per locale / per property later)
+  tagline         String?
+  description     String?  @db.Text
+  shortSummary    String?  @db.Text
+
+  // Stats — only set when real data exists
+  bedrooms        Int?
+  beds            Int?
+  bathrooms       Decimal?  @db.Decimal(4, 1)
+  maxGuests       Int?
+
+  airbnbUrl       String?
+  contactEmail    String?
+  contactPhone    String?
+  whatsappPhone   String?
+  instagramUrl    String?
+  facebookUrl     String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  memberships     PropertyMembership[]
+  participants    Participant[]
+  categories      Category[]
+  transactions    Transaction[]
+  settlements     Settlement[]
+  attachments     Attachment[]
+  auditLogs       AuditLog[]
+  websiteContent  WebsiteContent?
+  seoMetadata     SeoMetadata?
+  faqs            Faq[]
+  amenities       Amenity[]
+  galleryItems    GalleryItem[]
+  nearbyPlaces    NearbyPlace[]
+  houseRules      HouseRule[]
+}
+
+enum PropertyStatus {
+  PREPARING
+  COMING_SOON
+  LIVE
+  TEMPORARILY_UNAVAILABLE
+}
+
+model PropertyMembership {
+  id           String   @id @default(cuid())
+  propertyId   String
+  userId       String
+  role         Role
+  isActive     Boolean  @default(true)
+  invitedAt    DateTime @default(now())
+  joinedAt     DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  property     Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, userId])
+  @@index([userId])
+}
+
+// ============================================================
+// PEOPLE — Participant is financial; User is login.
+// A user may not exist for a participant (investor with no login).
+// ============================================================
+
+enum ParticipantKind {
+  OWNER
+  INVESTOR
+  STAFF
+  OTHER
+}
+
+model Participant {
+  id            String   @id @default(cuid())
+  propertyId    String
+  displayName   String
+  email         String?
+  phone         String?
+  kind          ParticipantKind @default(OWNER)
+  isActive      Boolean  @default(true)
+  notes         String?  @db.Text
+  userId        String?  // optional link to login account
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  property      Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  expenseSplits    ExpenseSplit[]
+  incomeSplits     IncomeSplit[]
+  paidTransactions Transaction[]   @relation("TxnPayer")
+  recvTransactions Transaction[]   @relation("TxnReceiver")
+  settlementsFrom  Settlement[]    @relation("SettleFrom")
+  settlementsTo    Settlement[]    @relation("SettleTo")
+
+  @@index([propertyId])
+  @@index([userId])
+}
+
+// ============================================================
+// CATEGORIES
+// ============================================================
+
+enum CategoryKind {
+  EXPENSE
+  INCOME
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  propertyId  String
+  name        String
+  kind        CategoryKind
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([propertyId, name, kind])
+  @@index([propertyId, kind])
+}
+
+// ============================================================
+// TRANSACTIONS (unified expense + income)
+// ============================================================
+
+enum TxnType {
+  EXPENSE
+  INCOME
+}
+
+enum TxnStatus {
+  ACTIVE
+  VOIDED
+}
+
+enum SplitMethod {
+  EQUAL
+  PERCENTAGE
+  EXACT
+}
+
+model Transaction {
+  id              String   @id @default(cuid())
+  propertyId      String
+  type            TxnType
+  status          TxnStatus @default(ACTIVE)
+
+  occurredOn      DateTime @db.Date           // business date
+  occurredAt      DateTime @default(now())    // exact timestamp
+
+  // Common
+  description     String
+  categoryId      String?
+  amountMinor     BigInt                       // integer minor units (paise)
+  currency        String   @default("INR")
+
+  // Expense fields
+  paidById        String?
+
+  // Income fields
+  source          String?                      // e.g. "Airbnb"
+  bookingRef      String?
+  receivedById    String?
+
+  notes           String?  @db.Text
+  splitMethod     SplitMethod @default(EQUAL)
+
+  createdById     String
+  voidedById      String?
+  voidedAt        DateTime?
+  voidReason      String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  property        Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  category        Category?  @relation(fields: [categoryId], references: [id])
+  paidBy          Participant? @relation("TxnPayer", fields: [paidById], references: [id])
+  receivedBy      Participant? @relation("TxnReceiver", fields: [receivedById], references: [id])
+  createdBy       User       @relation("TxnCreator", fields: [createdById], references: [id])
+
+  expenseSplits   ExpenseSplit[]
+  incomeSplits    IncomeSplit[]
+  attachments     Attachment[]
+
+  @@index([propertyId, type, status, occurredOn])
+  @@index([propertyId, status, occurredOn])
+  @@index([propertyId, occurredOn])
+  @@index([propertyId, categoryId])
+  @@index([propertyId, paidById])
+  @@index([propertyId, createdById])
+  @@index([voidedById])
+}
+
+model ExpenseSplit {
+  id              String   @id @default(cuid())
+  transactionId   String
+  participantId   String
+  amountMinor     BigInt       // authoritative amount owed by this participant
+  sharePercentSnapshot Decimal? @db.Decimal(8, 4) // for percentage-based splits (audit)
+  shareExactSnapshot   BigInt?                     // for exact-amount splits (audit)
+
+  transaction     Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  participant     Participant @relation(fields: [participantId], references: [id])
+
+  @@unique([transactionId, participantId])
+  @@index([participantId])
+}
+
+model IncomeSplit {
+  id              String   @id @default(cuid())
+  transactionId   String
+  participantId   String
+  entitledMinor   BigInt       // entitlement from split %
+  receivedMinor   BigInt       // amount actually received (defaults = entitled, can be edited)
+  sharePercentSnapshot Decimal? @db.Decimal(8, 4)
+
+  transaction     Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  participant     Participant @relation(fields: [participantId], references: [id])
+
+  @@unique([transactionId, participantId])
+  @@index([participantId])
+}
+
+// ============================================================
+// SETTLEMENTS
+// ============================================================
+
+enum SettlementStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+model Settlement {
+  id              String   @id @default(cuid())
+  propertyId      String
+  fromId          String
+  toId            String
+  amountMinor     BigInt
+  currency        String   @default("INR")
+  status          SettlementStatus @default(PENDING)
+  occurredOn      DateTime @db.Date
+  completedAt     DateTime?
+  notes           String?
+  paymentRef      String?
+  createdById     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  from            Participant @relation("SettleFrom", fields: [fromId], references: [id])
+  to              Participant @relation("SettleTo", fields: [toId], references: [id])
+
+  @@index([propertyId, status, occurredOn])
+  @@index([propertyId, status])
+  @@index([propertyId, occurredOn])
+  @@index([fromId])
+  @@index([toId])
+  @@index([createdById])
+}
+
+// ============================================================
+// ATTACHMENTS (receipts etc.)
+// ============================================================
+
+enum AttachmentKind {
+  RECEIPT
+  INCOME_PROOF
+  OTHER
+}
+
+model Attachment {
+  id              String   @id @default(cuid())
+  propertyId      String
+  transactionId   String?
+  kind            AttachmentKind @default(RECEIPT)
+  fileName        String
+  mimeType        String
+  sizeBytes       Int
+  storageKey      String           // path relative to STORAGE_ROOT
+  uploadedById    String?
+  createdAt       DateTime @default(now())
+
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  transaction     Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId])
+  @@index([transactionId])
+  @@index([propertyId, uploadedById])
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  propertyId    String?
+  actorId       String?
+  action        String        // e.g. "expense.created", "owner.role_changed"
+  entity        String        // e.g. "Transaction", "PropertyMembership"
+  entityId      String?
+  meta          Json?
+  createdAt     DateTime @default(now())
+
+  property      Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  actor         User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId, createdAt])
+  @@index([actorId])
+  @@index([entity, entityId])
+}
+
+// ============================================================
+// PUBLIC WEBSITE CMS
+// ============================================================
+
+model WebsiteContent {
+  id              String   @id @default(cuid())
+  propertyId      String   @unique
+  heroEyebrow     String?
+  heroTitle       String?
+  heroSubtitle    String?
+  heroImagePath   String?
+  aboutTitle      String?
+  aboutBody       String?  @db.Text
+  experienceBody  String?  @db.Text
+  contactBody     String?  @db.Text
+  updatedAt       DateTime @updatedAt
+
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model SeoMetadata {
+  id              String   @id @default(cuid())
+  propertyId      String   @unique
+  defaultTitle    String?
+  defaultDescription String?  @db.Text
+  defaultOgImagePath String?
+  twitterHandle   String?
+  updatedAt       DateTime @updatedAt
+
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model Faq {
+  id          String   @id @default(cuid())
+  propertyId  String
+  question    String
+  answer      String   @db.Text
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  @@index([propertyId, sortOrder])
+}
+
+model Amenity {
+  id          String   @id @default(cuid())
+  propertyId  String
+  group       String    // "property" | "entertainment" | "outdoor" | "kitchen" | ...
+  name        String
+  iconKey     String?   // lucide icon key
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+
+  property    Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  @@index([propertyId, group, sortOrder])
+}
+
+model GalleryItem {
+  id          String   @id @default(cuid())
+  propertyId  String
+  imagePath   String
+  altText     String
+  caption     String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  isHero      Boolean  @default(false)
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  @@index([propertyId, sortOrder])
+}
+
+model NearbyPlace {
+  id          String   @id @default(cuid())
+  propertyId  String
+  name        String
+  category    String   // e.g. "metro" | "airport" | "shopping" | "restaurant"
+  distanceKm  Decimal? @db.Decimal(6, 2)
+  description String?  @db.Text
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  @@index([propertyId, category])
+}
+
+model HouseRule {
+  id          String   @id @default(cuid())
+  propertyId  String
+  title       String
+  description String?  @db.Text
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  @@index([propertyId, sortOrder])
+}
+
+// ============================================================
+// LOCAL GUIDE (blog-like, future-friendly)
+// ============================================================
+
+model GuideArticle {
+  id          String   @id @default(cuid())
+  propertyId  String
+  slug        String
+  title       String
+  excerpt     String?  @db.Text
+  body        String   @db.Text
+  coverImage  String?
+  isPublished Boolean  @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([propertyId, slug])
+  @@index([propertyId, isPublished, publishedAt])
+}
