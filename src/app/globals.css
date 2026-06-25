@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-serif: 'Cormorant Garamond', 'Cormorant', 'Playfair Display', Georgia, serif;
+  --font-sans: 'Inter', 'Söhne', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-cream-50 text-ink-800 font-sans antialiased;
+  }
+  h1, h2, h3 {
+    @apply font-serif text-ink-900;
+    font-feature-settings: 'liga', 'kern';
+  }
+  ::selection {
+    @apply bg-olive-200 text-olive-900;
+  }
+  /* Visible focus for keyboard users */
+  :focus-visible {
+    @apply outline-none ring-2 ring-olive-500 ring-offset-2 ring-offset-cream-50;
+  }
+}
+
+@layer components {
+  .container-prose {
+    @apply mx-auto max-w-3xl px-6;
+  }
+  .container-wide {
+    @apply mx-auto max-w-[1320px] px-6;
+  }
+  .eyebrow {
+    @apply text-[0.7rem] tracking-[0.2em] uppercase text-ink-500 font-medium;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-all duration-200 focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-ink-900 text-cream-50 hover:bg-ink-800 focus-visible:ring-ink-900;
+  }
+  .btn-secondary {
+    @apply btn border border-ink-200 bg-transparent text-ink-900 hover:bg-ink-50 focus-visible:ring-ink-400;
+  }
+  .btn-accent {
+    @apply btn bg-olive-700 text-cream-50 hover:bg-olive-800 focus-visible:ring-olive-700;
+  }
+  .btn-ghost {
+    @apply btn text-ink-700 hover:bg-ink-100 focus-visible:ring-ink-400;
+  }
+  .input {
+    @apply block w-full rounded-md border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder-ink-300 transition-colors focus:border-olive-500 focus:outline-none focus:ring-1 focus:ring-olive-500;
+  }
+  .label {
+    @apply block text-xs font-medium text-ink-700 mb-1.5;
+  }
+  .card {
+    @apply rounded-xl border border-ink-100 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)];
+  }
+  .divider {
+    @apply h-px w-full bg-ink-100;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Admin surface */
+.admin-shell {
+  @apply min-h-screen bg-admin-bg text-admin-ink;
+}
+.admin-panel {
+  @apply rounded-xl border border-admin-border bg-admin-panel;
+}
