@@ -161,3 +161,55 @@ export const getDefaultPropertySlug = unstable_cache(
   ['public-default-slug'],
   { tags: [PUBLIC_PROPERTY_TAG], revalidate: 300 },
 );
+
+/**
+ * Published guide articles for the default property. Cached under
+ * PUBLIC_PROPERTY_TAG so a future CMS article editor naturally invalidates
+ * via the same revalidateTag call that CMS edits already use.
+ */
+export interface PublicGuideArticleSummary {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string | null;
+}
+
+async function _listPublicGuideArticles(propertyId: string): Promise<PublicGuideArticleSummary[]> {
+  const rows = await prisma.guideArticle.findMany({
+    where: { propertyId, isPublished: true },
+    orderBy: { publishedAt: 'desc' },
+    select: { id: true, slug: true, title: true, excerpt: true },
+  });
+  return rows;
+}
+
+export const listPublicGuideArticles = unstable_cache(
+  _listPublicGuideArticles,
+  ['public-guide-articles'],
+  { tags: [PUBLIC_PROPERTY_TAG], revalidate: 300 },
+);
+
+/**
+ * Single published guide article by slug. Cached under the same tag so
+ * generateMetadata() and the page render share one DB hit when the
+ * same slug is requested. Articles are public, low-write.
+ */
+export interface PublicGuideArticle extends PublicGuideArticleSummary {
+  body: string;
+  publishedAt: Date | null;
+  propertyId: string;
+}
+
+async function _getPublicGuideArticle(slug: string): Promise<PublicGuideArticle | null> {
+  const a = await prisma.guideArticle.findFirst({
+    where: { slug, isPublished: true },
+    select: { id: true, slug: true, title: true, excerpt: true, body: true, publishedAt: true, propertyId: true },
+  });
+  return a ?? null;
+}
+
+export const getPublicGuideArticle = unstable_cache(
+  _getPublicGuideArticle,
+  ['public-guide-article-by-slug'],
+  { tags: [PUBLIC_PROPERTY_TAG], revalidate: 300 },
+);

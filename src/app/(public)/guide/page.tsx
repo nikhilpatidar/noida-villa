@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
-import { loadPublicProperty, getDefaultPropertySlug } from '@/lib/services/website';
+import { loadPublicProperty, getDefaultPropertySlug, listPublicGuideArticles } from '@/lib/services/website';
 import { Header } from '@/components/public/Header';
 import { Footer } from '@/components/public/Footer';
 import { MobileStickyCTA } from '@/components/public/MobileStickyCTA';
@@ -20,10 +19,7 @@ export default async function GuideIndexPage() {
   const property = await loadPublicProperty(slug);
   if (!property) return null;
 
-  const articles = await prisma.guideArticle.findMany({
-    where: { propertyId: property.id, isPublished: true },
-    orderBy: { publishedAt: 'desc' },
-  });
+  const articles = await listPublicGuideArticles(property.id);
 
   return (
     <>

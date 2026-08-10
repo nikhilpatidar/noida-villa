@@ -107,3 +107,31 @@ export async function getActivePropertyId(): Promise<string | null> {
   });
   return m?.propertyId ?? null;
 }
+
+/**
+ * Returns the active property's display name for the current session,
+ * or null if the session has no active membership.
+ *
+ * Performance: the layout used to do `prisma.propertyMembership.findMany({
+ * include: { property: true } })` on every admin navigation just to read
+ * `memberships[0].property.name` — that scans every membership and pulls
+ * every column of the property row across the Vercel iad1 ↔ Supabase
+ * Mumbai link on every navigation. This helper reuses the JWT-cached
+ * membership id and reads exactly one column from the property row.
+ *
+ * Authorization semantics are preserved:
+ *   - Calls `auth()` so the JWT callback re-validates the user and may
+ *     refresh `membershipPropertyIds` (same behaviour as before).
+ *   - Only resolves a property if the session has at least one active
+ *     membership id in the JWT — i.e. we never look up a property
+ *     outside the user's membership scope.
+ */
+export async function getActivePropertyName(): Promise<string | null> {
+  const propertyId = await getActivePropertyId();
+  if (!propertyId) return null;
+  const property = await prisma.property.findUnique({
+    where: { id: propertyId },
+    select: { name: true },
+  });
+  return property?.name ?? null;
+}

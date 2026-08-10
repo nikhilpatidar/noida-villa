@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { prisma } from '@/lib/db';
-import { loadPublicProperty, getDefaultPropertySlug } from '@/lib/services/website';
+import { loadPublicProperty, getDefaultPropertySlug, getPublicGuideArticle } from '@/lib/services/website';
 import { Header } from '@/components/public/Header';
 import { Footer } from '@/components/public/Footer';
 import { MobileStickyCTA } from '@/components/public/MobileStickyCTA';
@@ -10,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const a = await prisma.guideArticle.findFirst({ where: { slug: params.slug, isPublished: true } });
+  const a = await getPublicGuideArticle(params.slug);
   if (!a) return { title: 'Guide' };
   return {
     title: a.title,
@@ -20,9 +19,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 export default async function GuideArticlePage({ params }: { params: { slug: string } }) {
-  const article = await prisma.guideArticle.findFirst({
-    where: { slug: params.slug, isPublished: true },
-  });
+  const article = await getPublicGuideArticle(params.slug);
   if (!article) return notFound();
   // The article's propertyId is the default property for this site.
   // Resolve through the cached helpers so we don't hit the DB for the property row.
