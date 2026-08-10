@@ -17,7 +17,11 @@ export default async function PeoplePage() {
     orderBy: { createdAt: 'asc' },
   });
   const userIds = participants.map((p) => p.userId).filter((u): u is string => !!u);
-  const users = await prisma.user.findMany({ where: { id: { in: userIds } } });
+  // Only the user email is needed for rendering; narrow the select.
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, email: true },
+  });
   const userById = new Map(users.map((u) => [u.id, u]));
 
   return (

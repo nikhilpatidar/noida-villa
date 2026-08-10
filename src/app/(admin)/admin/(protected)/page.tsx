@@ -14,10 +14,14 @@ export default async function AdminDashboardPage() {
   const propertyId = await getActivePropertyId();
   if (!propertyId) redirect('/admin/login');
 
-  const data = await loadDashboard(propertyId);
-  const myParticipant = await prisma.participant.findFirst({
-    where: { propertyId, userId: session.user.id, isActive: true },
-  });
+  // The dashboard loader and the "my participant" lookup are independent
+  // — both keyed by propertyId / userId. Run them in parallel.
+  const [data, myParticipant] = await Promise.all([
+    loadDashboard(propertyId),
+    prisma.participant.findFirst({
+      where: { propertyId, userId: session.user.id, isActive: true },
+    }),
+  ]);
   const myNet = myParticipant ? data.participants.find((p) => p.id === myParticipant.id)?.netMinor ?? 0n : null;
 
   // Serialise BigInts for client component safety

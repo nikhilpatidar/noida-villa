@@ -5,6 +5,7 @@ import { Table, THead, TH, TBody, TR, TD } from '@/components/ui/Table';
 import { Card, CardHeader, CardTitle, CardBody } from '@/components/ui/Card';
 import { formatINR } from '@/lib/money';
 import { YearPicker } from './YearPicker';
+import { getActivePropertyId } from '@/lib/authorization';
 
 function startOfYear(d: Date) { return new Date(d.getFullYear(), 0, 1); }
 function endOfYear(d: Date) { return new Date(d.getFullYear(), 11, 31); }
@@ -12,21 +13,23 @@ function endOfYear(d: Date) { return new Date(d.getFullYear(), 11, 31); }
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const session = await auth();
   if (!session?.user?.id) redirect('/admin/login');
+  // The session JWT already carries the active property id; no DB lookup.
+  const propertyId = await getActivePropertyId();
+  if (!propertyId) redirect('/admin/login');
+
   const sp = await searchParams;
   const year = Number(sp.year ?? new Date().getFullYear());
-  const property = await prisma.property.findFirst({
-    where: { memberships: { some: { userId: session.user.id, isActive: true } } },
-    include: { categories: true },
-  });
-  if (!property) redirect('/admin/login');
-
   const start = startOfYear(new Date(year, 0, 1));
   const end = endOfYear(new Date(year, 0, 1));
 
-  const transactions = await prisma.transaction.findMany({
-    where: { propertyId: property.id, status: 'ACTIVE', occurredOn: { gte: start, lte: end } },
-    include: { category: true, paidBy: true, receivedBy: true, expenseSplits: true, incomeSplits: true },
-  });
+  // Categories and transactions are independent — fetch in parallel.
+  const [categories, transactions] = await Promise.all([
+    prisma.category.findMany({ where: { propertyId } }),
+    prisma.transaction.findMany({
+      where: { propertyId, status: 'ACTIVE', occurredOn: { gte: start, lte: end } },
+      include: { category: true, paidBy: true, receivedBy: true, expenseSplits: true, incomeSplits: true },
+    }),
+  ]);
 
   let totalIncome = 0n;
   let totalExpense = 0n;
@@ -52,7 +55,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const totalExpenseBase = totalExpense > 0n ? totalExpense : 1n;
   const categoryBreakdown = Array.from(catExpense.entries())
     .map(([cid, amt]) => ({
-      name: cid ? property.categories.find((c) => c.id === cid)?.name ?? 'Unknown' : 'Uncategorized',
+      name: cid ? categories.find((c) => c.id === cid)?.name ?? 'Unknown' : 'Uncategorized',
       amountMinor: amt,
       pct: Number((amt * 10000n) / totalExpenseBase) / 100,
     }))

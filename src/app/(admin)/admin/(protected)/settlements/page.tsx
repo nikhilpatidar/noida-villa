@@ -7,26 +7,34 @@ import { Table, THead, TH, TBody, TR, TD } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { formatDate } from '@/lib/format';
 import { SettlementsActions } from './SettlementsActions';
+import { getActivePropertyId } from '@/lib/authorization';
 
 export default async function SettlementsPage() {
   const session = await auth();
   if (!session?.user?.id) redirect('/admin/login');
-  const property = await prisma.property.findFirst({
-    where: { memberships: { some: { userId: session.user.id, isActive: true } } },
-    include: { participants: { where: { isActive: true } } },
-  });
-  if (!property) redirect('/admin/login');
+  // The session JWT already carries the active property id; no DB lookup.
+  const propertyId = await getActivePropertyId();
+  if (!propertyId) redirect('/admin/login');
 
-  const { balances, suggestions } = await computeSuggestions(property.id);
-  const settlements = await prisma.settlement.findMany({
-    where: { propertyId: property.id },
-    orderBy: { occurredOn: 'desc' },
-    include: { from: true, to: true },
-    take: 100,
-  });
+  // The participants list, the suggestions computation (which itself issues
+  // a Promise.all), and the settlement history are all independent. We
+  // only need participants to render names; everything else is keyed by
+  // propertyId which we already have.
+  const [participants, { balances, suggestions }, settlements] = await Promise.all([
+    prisma.participant.findMany({
+      where: { propertyId, isActive: true },
+      orderBy: { displayName: 'asc' },
+    }),
+    computeSuggestions(propertyId),
+    prisma.settlement.findMany({
+      where: { propertyId },
+      orderBy: { occurredOn: 'desc' },
+      include: { from: true, to: true },
+      take: 100,
+    }),
+  ]);
 
-  const participantById = new Map<string, typeof property.participants[number]>();
-  for (const p of property.participants) participantById.set(p.id, p);
+  const participantById = new Map(participants.map((p) => [p.id, p]));
 
   return (
     <div className="space-y-8">
@@ -56,8 +64,8 @@ export default async function SettlementsPage() {
         <div className="admin-panel p-5">
           <h2 className="font-serif text-xl">Record a settlement</h2>
           <SettlementsActions
-            propertyId={property.id}
-            participants={property.participants.map((p) => ({ id: p.id, name: p.displayName }))}
+            propertyId={propertyId}
+            participants={participants.map((p) => ({ id: p.id, name: p.displayName }))}
           />
         </div>
       </div>

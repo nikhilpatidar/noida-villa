@@ -12,10 +12,21 @@ export default async function OwnersPage() {
   const propertyId = await getActivePropertyId();
   if (!propertyId) redirect('/admin/login');
 
-  // Only admin can manage owners
-  try {
-    await requireRole(propertyId, 'PROPERTY_ADMIN');
-  } catch {
+  // Authorisation and the membership listing are independent — run them
+  // in parallel. If the role check fails the membership row fetch is
+  // wasted but we avoid a full serial round-trip on the happy path.
+  const [roleResult, memberships] = await Promise.all([
+    requireRole(propertyId, 'PROPERTY_ADMIN')
+      .then(() => 'ok' as const)
+      .catch((e) => (e && typeof e === 'object' && 'status' in e ? ('forbidden' as const) : ('error' as const))),
+    prisma.propertyMembership.findMany({
+      where: { propertyId },
+      include: { user: true },
+      orderBy: { invitedAt: 'asc' },
+    }),
+  ]);
+
+  if (roleResult !== 'ok') {
     return (
       <div className="max-w-md">
         <h1 className="font-serif text-2xl text-admin-ink">Forbidden</h1>
@@ -23,12 +34,6 @@ export default async function OwnersPage() {
       </div>
     );
   }
-
-  const memberships = await prisma.propertyMembership.findMany({
-    where: { propertyId },
-    include: { user: true },
-    orderBy: { invitedAt: 'asc' },
-  });
 
   return (
     <div className="space-y-8">

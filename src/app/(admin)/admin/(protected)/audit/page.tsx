@@ -11,15 +11,23 @@ export default async function AuditPage() {
   // The session JWT already carries the active property id; no DB lookup.
   const propertyId = await getActivePropertyId();
   if (!propertyId) redirect('/admin/login');
-  try { await requireRole(propertyId, 'PROPERTY_ADMIN'); }
-  catch { return <div className="max-w-md"><h1 className="font-serif text-2xl">Forbidden</h1></div>; }
 
-  const logs = await prisma.auditLog.findMany({
-    where: { propertyId },
-    include: { actor: true },
-    orderBy: { createdAt: 'desc' },
-    take: 200,
-  });
+  // Authorisation and the audit log fetch are independent — run in parallel.
+  const [roleResult, logs] = await Promise.all([
+    requireRole(propertyId, 'PROPERTY_ADMIN')
+      .then(() => 'ok' as const)
+      .catch((e) => (e && typeof e === 'object' && 'status' in e ? ('forbidden' as const) : ('error' as const))),
+    prisma.auditLog.findMany({
+      where: { propertyId },
+      include: { actor: true },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    }),
+  ]);
+
+  if (roleResult !== 'ok') {
+    return <div className="max-w-md"><h1 className="font-serif text-2xl">Forbidden</h1></div>;
+  }
 
   return (
     <div className="space-y-6">
