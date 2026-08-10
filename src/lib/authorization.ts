@@ -117,7 +117,7 @@ export async function getActivePropertyId(): Promise<string | null> {
  * `memberships[0].property.name` — that scans every membership and pulls
  * every column of the property row across the Vercel iad1 ↔ Supabase
  * Mumbai link on every navigation. This helper reuses the JWT-cached
- * membership id and reads exactly one column from the property row.
+ * membership id and reads the name through the cached property service.
  *
  * Authorization semantics are preserved:
  *   - Calls `auth()` so the JWT callback re-validates the user and may
@@ -125,13 +125,18 @@ export async function getActivePropertyId(): Promise<string | null> {
  *   - Only resolves a property if the session has at least one active
  *     membership id in the JWT — i.e. we never look up a property
  *     outside the user's membership scope.
+ *   - The cached lookup itself is keyed by propertyId (not userId) and
+ *     tagged with PUBLIC_PROPERTY_TAG, so it is bounded by the existing
+ *     CMS invalidation hook and shares entries across all admins on the
+ *     same property. The property name is static reference data, not
+ *     user-specific or authorization-sensitive, and is already shown
+ *     publicly on the marketing site.
  */
 export async function getActivePropertyName(): Promise<string | null> {
   const propertyId = await getActivePropertyId();
   if (!propertyId) return null;
-  const property = await prisma.property.findUnique({
-    where: { id: propertyId },
-    select: { name: true },
-  });
-  return property?.name ?? null;
+  // Lazy-import to avoid pulling `next/cache` into module init paths
+  // (the cached helper only runs on server requests).
+  const { getPropertyNameById } = await import('@/lib/services/property');
+  return getPropertyNameById(propertyId);
 }

@@ -49,26 +49,77 @@ export interface DashboardData {
 }
 
 export async function loadDashboard(propertyId: string): Promise<DashboardData> {
-  const [property, participants, transactions, categories] = await Promise.all([
-    prisma.property.findUnique({ where: { id: propertyId } }),
-    prisma.participant.findMany({ where: { propertyId, isActive: true }, orderBy: { displayName: 'asc' } }),
+  // The dashboard originally did ONE transaction.findMany with no take
+  // limit and 6 includes. That returned every transaction plus every
+  // relation (category, paidBy, receivedBy, createdBy, expenseSplits,
+  // incomeSplits) over the Vercel iad1 ↔ Supabase Mumbai link on every
+  // /admin navigation. Source inspection of every consumer showed:
+  //
+  //   - computeBalances uses only scalar fields + split sub-fields.
+  //     It does NOT need any joined relation.
+  //   - totals, monthly, categoryBreakdown use only scalar fields.
+  //     They do NOT need any joined relation.
+  //   - The "recent" card renders only the top 20 transactions and
+  //     uses category/paidBy/receivedBy/createdBy from those rows.
+  //
+  // Splitting into two narrow queries keeps the balance calculation
+  // exact (it still uses the complete ACTIVE transaction history) but
+  // stops shipping unused joins for every row.
+  const [property, participants, balanceTransactions, categories, settlements, recentTransactions] = await Promise.all([
+    prisma.property.findUnique({
+      where: { id: propertyId },
+      select: { id: true, name: true, status: true, currency: true },
+    }),
+    prisma.participant.findMany({
+      where: { propertyId, isActive: true },
+      orderBy: { displayName: 'asc' },
+      select: { id: true, displayName: true, kind: true },
+    }),
+    // Query A — full transaction history for balances/totals/monthly/categoryBreakdown.
+    // No joined relations. Only the scalar fields and split sub-fields actually consumed.
     prisma.transaction.findMany({
       where: { propertyId, status: 'ACTIVE' },
-      include: {
-        category: true,
-        paidBy: true,
-        receivedBy: true,
-        createdBy: true,
-        expenseSplits: true,
-        incomeSplits: true,
-      },
       orderBy: { occurredOn: 'desc' },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        paidById: true,
+        receivedById: true,
+        amountMinor: true,
+        occurredOn: true,
+        categoryId: true,
+        expenseSplits: { select: { participantId: true, amountMinor: true } },
+        incomeSplits: { select: { participantId: true, entitledMinor: true, receivedMinor: true } },
+      },
     }),
-    prisma.category.findMany({ where: { propertyId, isActive: true } }),
+    prisma.category.findMany({
+      where: { propertyId, isActive: true },
+      select: { id: true, name: true },
+    }),
+    prisma.settlement.findMany({ where: { propertyId } }),
+    // Query B — top 20 for the dashboard's recent transactions card.
+    // Includes only the relations the recent card actually renders.
+    prisma.transaction.findMany({
+      where: { propertyId, status: 'ACTIVE' },
+      orderBy: { occurredOn: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        type: true,
+        description: true,
+        amountMinor: true,
+        occurredOn: true,
+        category: { select: { id: true, name: true } },
+        paidBy: { select: { displayName: true } },
+        receivedBy: { select: { displayName: true } },
+        createdBy: { select: { name: true } },
+      },
+    }),
   ]);
   if (!property) throw new Error('Property not found');
 
-  const settlements = await prisma.settlement.findMany({ where: { propertyId } });
+  const transactions = balanceTransactions;
 
   const balances = computeBalances(
     participants.map((p) => p.id),
@@ -165,7 +216,7 @@ export async function loadDashboard(propertyId: string): Promise<DashboardData> 
     };
   });
 
-  const recent = transactions.slice(0, 20).map((t) => ({
+  const recent = recentTransactions.map((t) => ({
     id: t.id,
     type: t.type as 'EXPENSE' | 'INCOME',
     description: t.description,

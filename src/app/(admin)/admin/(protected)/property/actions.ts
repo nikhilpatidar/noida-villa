@@ -3,7 +3,8 @@ import { requireMember, AuthorizationError } from '@/lib/authorization';
 import { propertyUpdateSchema } from '@/lib/validation';
 import { prisma } from '@/lib/db';
 import { writeAudit } from '@/lib/services/audit';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
+import { PUBLIC_PROPERTY_TAG } from '@/lib/services/website';
 
 export async function updatePropertyAction(input: unknown): Promise<{ ok: boolean; error?: string }> {
   const parsed = propertyUpdateSchema.safeParse(input);
@@ -52,6 +53,11 @@ export async function updatePropertyAction(input: unknown): Promise<{ ok: boolea
     revalidatePath('/');
     revalidatePath('/stay');
     revalidatePath('/location');
+    // Bump the shared property cache so both the public site and the
+    // admin sidebar see the new property name (e.g. when "name" was
+    // changed). Without this, the cached property loader would show
+    // the old name for up to the cache's TTL window.
+    revalidateTag(PUBLIC_PROPERTY_TAG);
     return { ok: true };
   } catch (e) {
     if (e instanceof AuthorizationError) return { ok: false, error: e.message };

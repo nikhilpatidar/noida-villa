@@ -29,7 +29,10 @@ export default async function TransactionsPage({
   const txns = await prisma.transaction.findMany({
     where,
     orderBy: { occurredOn: 'desc' },
-    include: { category: true, paidBy: true, receivedBy: true, createdBy: true, expenseSplits: true, incomeSplits: true },
+    // Only the joined relations the table actually renders are included.
+    // expenseSplits / incomeSplits are NOT shown here, so loading them
+    // wastes bandwidth on every /admin/transactions navigation.
+    include: { category: true, paidBy: true, receivedBy: true, createdBy: true },
     take: 200,
   });
 

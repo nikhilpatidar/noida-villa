@@ -155,3 +155,54 @@ describe('admin people page — user fetch is narrowed to email', () => {
     expect(src).toMatch(/prisma\.user\.findMany\s*\([\s\S]*?select:\s*\{\s*id:\s*true,\s*email:\s*true\s*\}/);
   });
 });
+
+describe('admin transactions page — only renderable joins are included', () => {
+  // The table renders: category.name, paidBy.displayName,
+  // receivedBy.displayName, createdBy.name|email. It does NOT render
+  // expenseSplits / incomeSplits at all, so loading them is wasted
+  // bandwidth on every /admin/transactions navigation.
+  it('does NOT include expenseSplits or incomeSplits in the findMany', () => {
+    const src = readFileSync(path.join(PAGES_DIR, 'transactions/page.tsx'), 'utf8');
+    expect(src).not.toMatch(/expenseSplits:\s*true/);
+    expect(src).not.toMatch(/incomeSplits:\s*true/);
+  });
+
+  it('still includes the relations the table actually renders', () => {
+    const src = readFileSync(path.join(PAGES_DIR, 'transactions/page.tsx'), 'utf8');
+    const includeBlock = src.match(/include:\s*\{[^}]*\}/);
+    expect(includeBlock).not.toBeNull();
+    expect(includeBlock![0]).toMatch(/category:/);
+    expect(includeBlock![0]).toMatch(/paidBy:/);
+    expect(includeBlock![0]).toMatch(/receivedBy:/);
+    expect(includeBlock![0]).toMatch(/createdBy:/);
+  });
+});
+
+describe('updatePropertyAction invalidates PUBLIC_PROPERTY_TAG', () => {
+  // The action mutates the property row (including name). The cached
+  // public/admin property loaders are tagged with PUBLIC_PROPERTY_TAG,
+  // so the action must invalidate that tag or the cache will serve
+  // the old property name for up to the TTL window.
+  it('imports revalidateTag and PUBLIC_PROPERTY_TAG', () => {
+    const src = readFileSync(
+      path.resolve(ROOT, 'src/app/(admin)/admin/(protected)/property/actions.ts'),
+      'utf8',
+    );
+    expect(src).toMatch(/import\s*\{[^}]*revalidateTag[^}]*\}\s*from\s*['"]next\/cache['"]/);
+    expect(src).toMatch(
+      /import\s*\{[^}]*PUBLIC_PROPERTY_TAG[^}]*\}\s*from\s*['"]@\/lib\/services\/website['"]/,
+    );
+  });
+
+  it('calls revalidateTag(PUBLIC_PROPERTY_TAG) inside updatePropertyAction', () => {
+    const src = readFileSync(
+      path.resolve(ROOT, 'src/app/(admin)/admin/(protected)/property/actions.ts'),
+      'utf8',
+    );
+    const block = src.match(
+      /export\s+async\s+function\s+updatePropertyAction[\s\S]*?\n\}/,
+    );
+    expect(block).not.toBeNull();
+    expect(block![0]).toMatch(/revalidateTag\(\s*PUBLIC_PROPERTY_TAG\s*\)/);
+  });
+});

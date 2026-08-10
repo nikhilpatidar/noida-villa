@@ -91,14 +91,19 @@ describe('getActivePropertyName — JWT-aware helper', () => {
 
   it('uses the membership id from the JWT to bound the property lookup', () => {
     // The helper must go through getActivePropertyId (which prefers the
-    // JWT-cached ids) and then select only the property name.
+    // JWT-cached ids) before doing any property lookup. The actual name
+    // lookup is delegated to the cached helper in src/lib/services/property.
     const helperBlock = authzSrc.match(
       /export\s+async\s+function\s+getActivePropertyName[\s\S]*?\n\}/,
     );
     expect(helperBlock).not.toBeNull();
     expect(helperBlock![0]).toMatch(/await\s+getActivePropertyId\s*\(/);
-    // And only selects the name column.
-    expect(helperBlock![0]).toMatch(/select:\s*\{\s*name:\s*true\s*\}/);
+    // And delegates to the cached helper rather than issuing a raw
+    // prisma.property.findUnique directly from authorization.ts.
+    expect(helperBlock![0]).toMatch(/getPropertyNameById\s*\(/);
+    // The helper itself must NOT issue a direct prisma.property.findUnique
+    // call any more (Phase H moved that to the cached property service).
+    expect(authzSrc).not.toMatch(/prisma\.property\.findUnique\s*\(/);
   });
 });
 
