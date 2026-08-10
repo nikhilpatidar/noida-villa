@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
-import { prisma } from '@/lib/db';
-import { loadPublicProperty } from '@/lib/services/website';
+import { loadPublicProperty, getDefaultPropertySlug } from '@/lib/services/website';
 import { Header } from '@/components/public/Header';
 import { Footer } from '@/components/public/Footer';
 import { MobileStickyCTA } from '@/components/public/MobileStickyCTA';
@@ -10,9 +9,9 @@ export const dynamic = "force-dynamic";
 
 
 export async function generateMetadata(): Promise<Metadata> {
-  const p = await prisma.property.findFirst();
-  if (!p) return { title: 'Stay' };
-  const data = await loadPublicProperty(p.slug);
+  const slug = await getDefaultPropertySlug();
+  if (!slug) return { title: 'Stay' };
+  const data = await loadPublicProperty(slug);
   if (!data) return { title: 'Stay' };
   return {
     title: `Stay at ${data.name}`,
@@ -24,9 +23,9 @@ export async function generateMetadata(): Promise<Metadata> {
 function siteConfigUrl() { return process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'; }
 
 export default async function StayPage() {
-  const p = await prisma.property.findFirst();
-  if (!p) return null;
-  const property = await loadPublicProperty(p.slug);
+  const slug = await getDefaultPropertySlug();
+  if (!slug) return null;
+  const property = await loadPublicProperty(slug);
   if (!property) return null;
   return (
     <>

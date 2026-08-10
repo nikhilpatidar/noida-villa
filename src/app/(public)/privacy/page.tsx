@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
-import { prisma } from '@/lib/db';
-import { loadPublicProperty } from '@/lib/services/website';
+import { loadPublicProperty, getDefaultPropertySlug } from '@/lib/services/website';
 import { Header } from '@/components/public/Header';
 import { Footer } from '@/components/public/Footer';
 import { MobileStickyCTA } from '@/components/public/MobileStickyCTA';
@@ -15,8 +14,8 @@ export const metadata: Metadata = {
 };
 
 export default async function PrivacyPage() {
-  const p = await prisma.property.findFirst();
-  const property = p ? await loadPublicProperty(p.slug) : null;
+  const slug = await getDefaultPropertySlug();
+  const property = slug ? await loadPublicProperty(slug) : null;
   return (
     <>
       <Header propertyName={property?.name ?? 'The property'} />

@@ -188,8 +188,8 @@ describe('generic seed is not the demo seed', () => {
 describe('empty database behavior is graceful', () => {
   it('homepage degrades when no property exists', () => {
     const src = readSrc('src/app/(public)/page.tsx');
-    // The page checks for `firstProperty` and renders a placeholder if missing.
-    expect(src).toContain('firstProperty');
+    // The page checks for a default slug and renders a placeholder if missing.
+    expect(src).toContain('getDefaultPropertySlug');
     expect(src).toContain('Site is being prepared');
   });
 });

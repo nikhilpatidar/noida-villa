@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
-import { prisma } from '@/lib/db';
-import { loadPublicProperty } from '@/lib/services/website';
+import { loadPublicProperty, getDefaultPropertySlug } from '@/lib/services/website';
 import { Header } from '@/components/public/Header';
 import { Footer } from '@/components/public/Footer';
 import { AmenityGrid } from '@/components/public/AmenityGrid';
@@ -12,9 +11,9 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: 'Amenities', description: 'Amenities available at the villa.' };
 
 export default async function AmenitiesPage() {
-  const p = await prisma.property.findFirst();
-  if (!p) return null;
-  const property = await loadPublicProperty(p.slug);
+  const slug = await getDefaultPropertySlug();
+  if (!slug) return null;
+  const property = await loadPublicProperty(slug);
   if (!property) return null;
   return (
     <>

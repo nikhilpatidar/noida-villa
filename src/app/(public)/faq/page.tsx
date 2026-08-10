@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
-import { prisma } from '@/lib/db';
-import { loadPublicProperty } from '@/lib/services/website';
+import { loadPublicProperty, getDefaultPropertySlug } from '@/lib/services/website';
 import { Header } from '@/components/public/Header';
 import { Footer } from '@/components/public/Footer';
 import { FAQList } from '@/components/public/FAQList';
@@ -12,9 +11,9 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: 'FAQ', description: 'Frequently asked questions.' };
 
 export default async function FAQPage() {
-  const p = await prisma.property.findFirst();
-  if (!p) return null;
-  const property = await loadPublicProperty(p.slug);
+  const slug = await getDefaultPropertySlug();
+  if (!slug) return null;
+  const property = await loadPublicProperty(slug);
   if (!property) return null;
   return (
     <>

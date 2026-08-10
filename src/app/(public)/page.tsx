@@ -1,6 +1,5 @@
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
-import { loadPublicProperty } from '@/lib/services/website';
+import { loadPublicProperty, getDefaultPropertySlug } from '@/lib/services/website';
 import { Hero } from '@/components/public/Hero';
 import { Header } from '@/components/public/Header';
 import { Footer } from '@/components/public/Footer';
@@ -17,12 +16,9 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   // Discover the first property. In multi-property future, routing can be slug-based.
-  const firstProperty = await prisma.property.findFirst({
-    select: { id: true, slug: true, name: true, status: true },
-    orderBy: { createdAt: 'asc' },
-  });
+  const slug = await getDefaultPropertySlug();
 
-  if (!firstProperty) {
+  if (!slug) {
     return (
       <main className="min-h-screen grid place-items-center px-6">
         <div className="max-w-md text-center">
@@ -35,7 +31,7 @@ export default async function HomePage() {
     );
   }
 
-  const property = await loadPublicProperty(firstProperty.slug);
+  const property = await loadPublicProperty(slug);
   if (!property) return null;
   const comingSoon = property.status !== 'LIVE';
 

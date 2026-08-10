@@ -3,7 +3,8 @@ import { requireMember, AuthorizationError } from '@/lib/authorization';
 import { websiteContentUpdateSchema, seoUpdateSchema } from '@/lib/validation';
 import { prisma } from '@/lib/db';
 import { writeAudit } from '@/lib/services/audit';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
+import { PUBLIC_PROPERTY_TAG } from '@/lib/services/website';
 
 export async function updateWebsiteContentAction(input: unknown): Promise<{ ok: boolean; error?: string }> {
   const parsed = websiteContentUpdateSchema.safeParse(input);
@@ -37,6 +38,7 @@ export async function updateWebsiteContentAction(input: unknown): Promise<{ ok: 
     revalidatePath('/admin/website');
     revalidatePath('/');
     revalidatePath('/stay');
+    revalidateTag(PUBLIC_PROPERTY_TAG);
     return { ok: true };
   } catch (e) {
     if (e instanceof AuthorizationError) return { ok: false, error: e.message };
@@ -70,6 +72,7 @@ export async function updateSeoAction(input: unknown): Promise<{ ok: boolean; er
       });
     });
     revalidatePath('/admin/website');
+    revalidateTag(PUBLIC_PROPERTY_TAG);
     return { ok: true };
   } catch (e) {
     if (e instanceof AuthorizationError) return { ok: false, error: e.message };

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { loadPublicProperty } from '@/lib/services/website';
+import { loadPublicProperty, getDefaultPropertySlug } from '@/lib/services/website';
 import { Header } from '@/components/public/Header';
 import { Footer } from '@/components/public/Footer';
 import { MobileStickyCTA } from '@/components/public/MobileStickyCTA';
@@ -24,14 +24,16 @@ export default async function GuideArticlePage({ params }: { params: { slug: str
     where: { slug: params.slug, isPublished: true },
   });
   if (!article) return notFound();
-  const property = await prisma.property.findUnique({ where: { id: article.propertyId } });
+  // The article's propertyId is the default property for this site.
+  // Resolve through the cached helpers so we don't hit the DB for the property row.
+  const _slug = await getDefaultPropertySlug();
+  if (!_slug) return notFound();
+  const property = await loadPublicProperty(_slug);
   if (!property) return notFound();
-  const p = await loadPublicProperty(property.slug);
-  if (!p) return notFound();
 
   return (
     <>
-      <Header propertyName={p.name} />
+      <Header propertyName={property.name} />
       <main className="container-prose py-16">
         <div className="eyebrow">Guide</div>
         <h1 className="mt-3 font-serif text-4xl md:text-5xl text-ink-900 text-balance">{article.title}</h1>
@@ -41,13 +43,13 @@ export default async function GuideArticlePage({ params }: { params: { slug: str
         </article>
       </main>
       <Footer
-        propertyName={p.name}
-        city={p.city}
-        state={p.state}
-        country={p.country}
-        airbnbUrl={p.airbnbUrl}
-        instagramUrl={p.instagramUrl}
-        contactEmail={p.contactEmail}
+        propertyName={property.name}
+        city={property.city}
+        state={property.state}
+        country={property.country}
+        airbnbUrl={property.airbnbUrl}
+        instagramUrl={property.instagramUrl}
+        contactEmail={property.contactEmail}
       />
       <MobileStickyCTA />
     </>

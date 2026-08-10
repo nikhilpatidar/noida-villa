@@ -2,7 +2,13 @@
  * Public website content service.
  *
  * Reads from DB; falls back to env-based defaults. Single source of truth.
+ *
+ * Performance: the loader and the slug-resolution helper are wrapped in
+ * Next.js `unstable_cache` so public pages do not hit the database on
+ * every request. CMS edits invalidate via `revalidateTag('public-property')`.
+ * See `src/app/(admin)/admin/(protected)/website/actions.ts`.
  */
+import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/db';
 import { siteConfig } from '@/lib/env';
 
@@ -49,7 +55,11 @@ export interface PublicPropertyData {
   nearbyPlaces: Array<{ id: string; name: string; category: string; distanceKm: number | null; description: string | null }>;
 }
 
-export async function loadPublicProperty(slug: string): Promise<PublicPropertyData | null> {
+/** Public tag used by CMS actions to invalidate the public-property cache. */
+export const PUBLIC_PROPERTY_TAG = 'public-property';
+
+/** Raw (uncached) loader — kept private so callers always go through the cached wrapper. */
+async function _loadPublicProperty(slug: string): Promise<PublicPropertyData | null> {
   const property = await prisma.property.findUnique({
     where: { slug },
     include: {
@@ -122,3 +132,32 @@ export async function loadPublicProperty(slug: string): Promise<PublicPropertyDa
     })),
   };
 }
+
+/**
+ * Cached loader. CMS edits call `revalidateTag(PUBLIC_PROPERTY_TAG)`.
+ * A short revalidate window (5 min) bounds staleness if a tag call is
+ * somehow missed.
+ */
+export const loadPublicProperty = unstable_cache(
+  _loadPublicProperty,
+  ['public-property-by-slug'],
+  { tags: [PUBLIC_PROPERTY_TAG], revalidate: 300 },
+);
+
+/**
+ * Resolve the slug of the first (default) property. Cached under the same
+ * tag so a CMS edit that adds/renames a property is reflected promptly.
+ */
+async function _getDefaultPropertySlug(): Promise<string | null> {
+  const p = await prisma.property.findFirst({
+    select: { slug: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  return p?.slug ?? null;
+}
+
+export const getDefaultPropertySlug = unstable_cache(
+  _getDefaultPropertySlug,
+  ['public-default-slug'],
+  { tags: [PUBLIC_PROPERTY_TAG], revalidate: 300 },
+);
