@@ -78,3 +78,32 @@ export async function requireRole(propertyId: string, required: Role): Promise<A
 export async function currentSession() {
   return await auth();
 }
+
+/**
+ * Returns the active property id for the current session.
+ *
+ * The JWT carries `membershipPropertyIds` (refreshed by the auth-staleness
+ * fix every ~60s) so the common case needs zero DB roundtrips. If the
+ * session somehow has no memberships cached (cold JWT, or memberships
+ * changed mid-flight) we fall back to a single DB lookup. This saves one
+ * `prisma.property.findFirst(...)` on every admin page request when the
+ * page only needs `property.id`.
+ *
+ * Caller MUST handle the `null` return — it means the session has no
+ * active membership and the caller should redirect to `/admin/login`.
+ */
+export async function getActivePropertyId(): Promise<string | null> {
+  const session = await auth();
+  const ids = session?.user?.membershipPropertyIds;
+  if (Array.isArray(ids) && ids.length > 0) return ids[0];
+  // Fallback: query the DB only when the JWT does not yet have the
+  // membership snapshot (very rare; covers cold JWTs and any session
+  // whose token predates the staleness-fix refresh).
+  const userId = session?.user?.id;
+  if (!userId) return null;
+  const m = await prisma.propertyMembership.findFirst({
+    where: { userId, isActive: true },
+    select: { propertyId: true },
+  });
+  return m?.propertyId ?? null;
+}

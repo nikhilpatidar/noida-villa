@@ -3,20 +3,19 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { Table, THead, TH, TBody, TR, TD } from '@/components/ui/Table';
 import { formatDateTime } from '@/lib/format';
-import { requireRole } from '@/lib/authorization';
+import { requireRole, getActivePropertyId } from '@/lib/authorization';
 
 export default async function AuditPage() {
   const session = await auth();
   if (!session?.user?.id) redirect('/admin/login');
-  const property = await prisma.property.findFirst({
-    where: { memberships: { some: { userId: session.user.id, isActive: true } } },
-  });
-  if (!property) redirect('/admin/login');
-  try { await requireRole(property.id, 'PROPERTY_ADMIN'); }
+  // The session JWT already carries the active property id; no DB lookup.
+  const propertyId = await getActivePropertyId();
+  if (!propertyId) redirect('/admin/login');
+  try { await requireRole(propertyId, 'PROPERTY_ADMIN'); }
   catch { return <div className="max-w-md"><h1 className="font-serif text-2xl">Forbidden</h1></div>; }
 
   const logs = await prisma.auditLog.findMany({
-    where: { propertyId: property.id },
+    where: { propertyId },
     include: { actor: true },
     orderBy: { createdAt: 'desc' },
     take: 200,

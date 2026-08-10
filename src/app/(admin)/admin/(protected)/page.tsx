@@ -4,21 +4,19 @@ import { prisma } from '@/lib/db';
 import { loadDashboard } from '@/lib/services/dashboard';
 import { DashboardView } from './DashboardView';
 import { formatINR } from '@/lib/money';
+import { getActivePropertyId } from '@/lib/authorization';
 
 export default async function AdminDashboardPage() {
   const session = await auth();
   if (!session?.user?.id) redirect('/admin/login');
 
-  const property = await prisma.property.findFirst({
-    where: {
-      memberships: { some: { userId: session.user.id, isActive: true } },
-    },
-  });
-  if (!property) redirect('/admin/login');
+  // The session JWT already carries the active property id; no DB lookup.
+  const propertyId = await getActivePropertyId();
+  if (!propertyId) redirect('/admin/login');
 
-  const data = await loadDashboard(property.id);
+  const data = await loadDashboard(propertyId);
   const myParticipant = await prisma.participant.findFirst({
-    where: { propertyId: property.id, userId: session.user.id, isActive: true },
+    where: { propertyId, userId: session.user.id, isActive: true },
   });
   const myNet = myParticipant ? data.participants.find((p) => p.id === myParticipant.id)?.netMinor ?? 0n : null;
 

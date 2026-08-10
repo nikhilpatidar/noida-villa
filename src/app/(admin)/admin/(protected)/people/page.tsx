@@ -4,16 +4,16 @@ import { prisma } from '@/lib/db';
 import { Table, THead, TH, TBody, TR, TD } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { PeopleForm } from './PeopleForm';
+import { getActivePropertyId } from '@/lib/authorization';
 
 export default async function PeoplePage() {
   const session = await auth();
   if (!session?.user?.id) redirect('/admin/login');
-  const property = await prisma.property.findFirst({
-    where: { memberships: { some: { userId: session.user.id, isActive: true } } },
-  });
-  if (!property) redirect('/admin/login');
+  // The session JWT already carries the active property id; no DB lookup.
+  const propertyId = await getActivePropertyId();
+  if (!propertyId) redirect('/admin/login');
   const participants = await prisma.participant.findMany({
-    where: { propertyId: property.id },
+    where: { propertyId },
     orderBy: { createdAt: 'asc' },
   });
   const userIds = participants.map((p) => p.userId).filter((u): u is string => !!u);
@@ -30,7 +30,7 @@ export default async function PeoplePage() {
 
       <div className="admin-panel p-5 max-w-2xl">
         <h2 className="font-serif text-xl">Add participant</h2>
-        <PeopleForm propertyId={property.id} />
+        <PeopleForm propertyId={propertyId} />
       </div>
 
       <div>

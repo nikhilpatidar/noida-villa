@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { Table, THead, TH, TBody, TR, TD } from '@/components/ui/Table';
 import { Card, CardHeader, CardTitle, CardBody } from '@/components/ui/Card';
 import { formatINR } from '@/lib/money';
+import { YearPicker } from './YearPicker';
 
 function startOfYear(d: Date) { return new Date(d.getFullYear(), 0, 1); }
 function endOfYear(d: Date) { return new Date(d.getFullYear(), 11, 31); }
@@ -64,14 +65,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <div className="eyebrow">Reports</div>
           <h1 className="mt-1 font-serif text-3xl text-admin-ink">{year} financial report</h1>
         </div>
-        <form method="get">
-          <select name="year" defaultValue={String(year)} className="input" onChange={(e) => (e.target.form as HTMLFormElement).submit()}>
-            {Array.from({ length: 5 }).map((_, i) => {
-              const y = new Date().getFullYear() - i;
-              return <option key={y} value={y}>{y}</option>;
-            })}
-          </select>
-        </form>
+        <YearPicker
+          currentYear={year}
+          years={Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)}
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

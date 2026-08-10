@@ -7,6 +7,7 @@ import { formatINR } from '@/lib/money';
 import { formatDate } from '@/lib/format';
 import { EmptyState } from '@/components/ui/EmptyState';
 import Link from 'next/link';
+import { getActivePropertyId } from '@/lib/authorization';
 
 export default async function TransactionsPage({
   searchParams,
@@ -16,12 +17,11 @@ export default async function TransactionsPage({
   const session = await auth();
   if (!session?.user?.id) redirect('/admin/login');
   const sp = await searchParams;
-  const property = await prisma.property.findFirst({
-    where: { memberships: { some: { userId: session.user.id, isActive: true } } },
-  });
-  if (!property) redirect('/admin/login');
+  // The session JWT already carries the active property id; no DB lookup.
+  const propertyId = await getActivePropertyId();
+  if (!propertyId) redirect('/admin/login');
 
-  const where: any = { propertyId: property.id, status: 'ACTIVE' };
+  const where: any = { propertyId, status: 'ACTIVE' };
   if (sp.type === 'expense' || sp.type === 'EXPENSE') where.type = 'EXPENSE';
   if (sp.type === 'income' || sp.type === 'INCOME') where.type = 'INCOME';
   if (sp.q) where.description = { contains: sp.q, mode: 'insensitive' };
